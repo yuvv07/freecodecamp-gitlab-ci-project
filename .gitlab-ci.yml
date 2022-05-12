@@ -1,0 +1,40 @@
+stages:
+    - build
+    - deploy production
+
+build website:
+    image: node:16-alpine
+    stage: build
+    script:
+        - yarn install --network-timeout 100000
+        - yarn lint
+        - yarn test
+        - yarn build
+        - ls build/ | grep 'index.html'
+    artifacts:
+        paths:
+            - build
+
+
+deploy to production:
+    stage: deploy production
+    environment: production
+    variables:
+        APP_NAME: my-website
+        APP_ENV_NAME: Mywebsite-env-1
+    image: 
+        name: amazon/aws-cli:2.4.11
+        entrypoint: [""]
+    rules:
+        - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+    script:
+        - yum install gettext -y
+        - export DEPLOY_TOKEN=$(echo $GITLAB_AWS_DEPLOY_TOKEN | tr -d "\n" | base64)
+        - envsubst < templates/Dockerrun.aws.json > Dockerrun.aws.json
+        - envsubst < templates/auth.json > auth.json
+        - cat Dockerrun.aws.json
+        - cat auth.json
+        - aws s3 cp Dockerrun.aws.json s3://$AWS_S3_BUCKET_EB
+        - aws s3 cp auth.json s3://$AWS_S3_BUCKET_EB
+        - aws elasticbeanstalk create-application-version --application-name $APP_NAME --version-label 2 --source-bundle S3Bucket=$AWS_S3_BUCKET_EB,S3Key=Dockerrun.aws.json
+        - aws elasticbeanstalk update-environment --application-name $APP_NAME --version-label 2 --environment-name $APP_ENV_NAME
